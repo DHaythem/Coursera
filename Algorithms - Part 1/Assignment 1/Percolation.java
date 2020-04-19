@@ -1,3 +1,4 @@
+import edu.princeton.cs.algs4.StdOut;
 import edu.princeton.cs.algs4.WeightedQuickUnionUF;
 
 /*
@@ -11,12 +12,14 @@ import edu.princeton.cs.algs4.WeightedQuickUnionUF;
 
 public class Percolation {
     
-    private WeightedQuickUnionUF grid;
-    private WeightedQuickUnionUF full;
-    private int N;
-    private int top;
-    private int bottom;
-    private boolean[] openNodes;
+    private boolean[][] grid;
+    private WeightedQuickUnionUF wqfGrid;
+    private WeightedQuickUnionUF wqfFull;
+    private int gridSize;
+    private int gridSquared;
+    private int virtualTop;
+    private int virtualBottom;
+    private int openSites;
     
     /*
       Initialises an N * N WeightedQuickUnionUF object plus two extra nodes for the virtual top and virtual bottom nodes.
@@ -24,117 +27,146 @@ public class Percolation {
       Also initialises a second N * N WeightedQuickUnionUF object plus one extra node as a second collection to check for fullness and avoid the backwash issue.
       N dimensions of the grid
     */
-    
+
     public Percolation(int N) {
-        if (N <= 0) throw new java.lang.IllegalArgumentException("N must be greater than zero");
-        
-        grid = new WeightedQuickUnionUF(N * N + 2);
-        full = new WeightedQuickUnionUF(N * N + 1);
-        
-        this.N = N;
-        
-        top = getSingleArrayIdx(N, N) + 1;
-        bottom = getSingleArrayIdx(N, N) + 2;
-        
-        openNodes = new boolean[N * N];
+        if (N <= 0) throw new IllegalArgumentException("N must be greater than zero");
+        gridSize = N;
+        gridSquared = N * N ;
+        grid = new boolean[gridSize][gridSize];
+        wqfGrid = new WeightedQuickUnionUF(gridSquared + 2); // includes virtual top bottom
+        wqfFull = new WeightedQuickUnionUF(gridSquared + 1); // includes virtual top
+        virtualBottom = gridSquared + 1;
+        virtualTop = gridSquared;
+        openSites = 0;
+
     }
-    
-    /*
-      Converts an index for a 0-based array from two grid coordinates which are 1-based.
-      First checks to see if the coordinates are out of bounds.
-      i Node row
-      j Node column
-    */
-    
-    private int getSingleArrayIdx(int i, int j) {
-        doOutOfBoundCheck(i, j);
-        return N * (i - 1) + j - 1;
-    }
-    
-    /*
-      Throws an error if the given coordinates are not valid.
-    */
-    
-    private void doOutOfBoundCheck(int i, int j) {
-        if (!isValid(i, j)) throw new java.lang.IllegalArgumentException("Values are out of bounds");
-    }
-    
-    /*
-      Checks to see if two given coordinates are valid.
-    */
-    
-    private boolean isValid(int i, int j) {
-        return i > 0 && j > 0 && i <= N && j <= N;
-    }
-    
+
     /*
      Sets a given node coordinates to be open (if it isn't open already).
-     First is sets the appropriate index of the`openNodes` array to be true and then attempts to union with all adjacent open nodes.
+     First, sets the appropriate index in the grid to be true and then attempts to union with all adjacent open nodes.
      If the node is in the first row then it will union with the virtual top node. 
      If the node is in the last row then it will union with the virtual bottom row.
      This does connections both for the grid as well as the full, but checkes to make sure that the nodes in full never connect to the virtual bottom node.
     */
     
-    public void open(int i, int j) {
-        doOutOfBoundCheck(i, j);
-        
-        if (isOpen(i, j)) return; //No need to open this again as it's already open
-        
-        int idx = getSingleArrayIdx(i, j);
-        openNodes[idx] = true;
-        
-        //Node is in the top row. Union node in grid and full to the virtual top row.
-        if (i == 1) {
-            grid.union(top, idx);
-            full.union(top, idx);
-        }
-        
-        //Node is in the bottom row. Only union the node in grid to avoid backwash issue.
-        if (i == N) grid.union(bottom, idx);
-        
-        //Union with the node above the given node if it is already open
-        if (isValid(i - 1, j) && isOpen(i - 1, j)) {
-            grid.union(getSingleArrayIdx(i - 1, j), idx);
-            full.union(getSingleArrayIdx(i - 1, j), idx);
+    public void open(int row, int col) {
+        validateSite(row, col);
+
+        int shiftRow = row - 1;
+        int shiftCol = col - 1;
+        int flatIndex = flattenGrid(row, col);
+
+        // If already open, stop
+        if (isOpen(row, col)) {
+            return;
         }
 
-        //Union with the node to the right of the given node if it is already open
-        if (isValid(i, j + 1) && isOpen(i, j + 1)) {
-            grid.union(getSingleArrayIdx(i, j + 1), idx);
-            full.union(getSingleArrayIdx(i, j + 1), idx);
+        // Open Site
+        grid[shiftRow][shiftCol] = true;
+        openSites++;
+
+        if (row == 1) {  // Top Row
+            wqfGrid.union(virtualTop, flatIndex);
+            wqfFull.union(virtualTop, flatIndex);
         }
 
-        //Union with the node below the given node if it is already open
-        if (isValid(i + 1, j) && isOpen(i + 1, j)) {
-            grid.union(getSingleArrayIdx(i + 1, j), idx);
-            full.union(getSingleArrayIdx(i + 1, j), idx);
+        if (row == gridSize) {  // Bottom Row
+            wqfGrid.union(virtualBottom, flatIndex);
         }
 
-        // Union with the node to the left of the given node if it is already open
-        if (isValid(i, j - 1) && isOpen(i, j - 1)) {
-            grid.union(getSingleArrayIdx(i, j - 1), idx);
-            full.union(getSingleArrayIdx(i, j - 1), idx);
+        // Check and Open Left
+        if (isOnGrid(row, col - 1) && isOpen(row, col - 1)) {
+            wqfGrid.union(flatIndex, flattenGrid(row, col - 1));
+            wqfFull.union(flatIndex, flattenGrid(row, col - 1));
+        }
+
+        // Check and Open Right
+        if (isOnGrid(row, col + 1) && isOpen(row, col + 1)) {
+            wqfGrid.union(flatIndex, flattenGrid(row, col + 1));
+            wqfFull.union(flatIndex, flattenGrid(row, col + 1));
+        }
+
+        // Check and Open Up
+        if (isOnGrid(row - 1, col) && isOpen(row - 1, col)) {
+            wqfGrid.union(flatIndex, flattenGrid(row - 1, col));
+            wqfFull.union(flatIndex, flattenGrid(row - 1, col));
+        }
+
+        // Check and Open Down
+        if (isOnGrid(row + 1, col) && isOpen(row + 1, col)) {
+            wqfGrid.union(flatIndex, flattenGrid(row + 1, col));
+            wqfFull.union(flatIndex, flattenGrid(row + 1, col));
         }
     }
     
+    /*
+      Converts an index for a 0-based array from two grid coordinates which are 1-based.
+      First checks to see if the coordinates are out of bounds.
+    */
+    private int flattenGrid(int row, int col) {
+        return gridSize * (row - 1) + col - 1;
+    }
     
+    //Checks to see if two given coordinates are valid.
+    private boolean isOnGrid(int row, int col) {
+        int shiftRow = row - 1;
+        int shiftCol = col - 1;
+        return (shiftRow >= 0 && shiftCol >= 0 && shiftRow < gridSize && shiftCol < gridSize);
+    }
+    
+    //Throws an error if the given coordinates are not valid.
+    private void validateSite(int row, int col) {
+        if (!isOnGrid(row, col)) {
+            throw new IndexOutOfBoundsException("Index is out of bounds");
+        }
+    }
+
     //Checks whether this node is open or not.
-    public boolean isOpen(int i, int j) {
-        doOutOfBoundCheck(i ,j);
-        return openNodes[getSingleArrayIdx(i, j)];    
+    public boolean isOpen(int row, int col) {
+        validateSite(row, col);
+        return grid[row - 1][col - 1];
+
     }
-    
+
     /*
      Checks if a given node if 'full'. A node is considered full if it connects to the virtual top node.
      Note that this check is against the full which is not connected to the virtual bottom node so that we don't get affected by backwash.
     */
-    public boolean isFull(int i, int j) {
-        int idx = getSingleArrayIdx(i, j);
-        return full.connected(idx, top);
-    }
     
+    public boolean isFull(int row, int col) {
+        validateSite(row, col);
+        return wqfFull.connected(virtualTop, flattenGrid(row, col));
+    }
+
+    // Test: number of open sites
+    public int numberOfOpenSites() {
+        return openSites;
+    }
+
     //the grid percolate if the virtual top node connects to the virtual bottom node.
-    public boolean percolate() {
-        return grid.connected(top, bottom);
+    public boolean percolates() {
+        return wqfGrid.connected(virtualTop, virtualBottom);
+    }
+
+    // test client
+    public static void main(String[] args) {
+        int size = Integer.parseInt(args[0]);
+
+        Percolation percolation = new Percolation(size);
+        int argCount = args.length;
+        for (int i = 1; argCount >= 2; i += 2) {
+            int row = Integer.parseInt(args[i]);
+            int col = Integer.parseInt(args[i + 1]);
+            StdOut.printf("Adding row: %d  col: %d %n", row, col);
+            percolation.open(row, col);
+            if (percolation.percolates()) {
+                StdOut.printf("%nThe System percolates %n");
+            }
+            argCount -= 2;
+        }
+        if (!percolation.percolates()) {
+            StdOut.print("Does not percolate %n");
+        }
+
     }
 }
