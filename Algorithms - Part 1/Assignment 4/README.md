@@ -5,6 +5,7 @@ https://coursera.cs.princeton.edu/algs4/assignments/8puzzle/specification.php
 Programming Assignment 4 for the "Algorithms, Part I" course on Coursera.
 
 The problem:
+
 Write a program to solve the 8-puzzle problem (and its natural generalizations) using the A* search algorithm.
 
 The 8-puzzle problem is a puzzle invented and popularized by Noyes Palmer Chapman in the 1870s.
